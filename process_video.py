@@ -95,6 +95,7 @@ for filename in uploadFileNames:
 
 
 os.system('rm -rf thumbs; rm *.mp4; rm *.mpg')
-b.delete_key(k)
+if settings['delete_raw_video_from_s3']:
+    b.delete_key(k)
 if halt:
     os.system('sudo halt')
