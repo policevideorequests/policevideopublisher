@@ -17,10 +17,13 @@ k = Key(b)
 k.key = video
 k.get_contents_to_filename(video)
 
-command = 'ffmpeg -threads 0 -i %s -crf 20 -r 15 -preset ultrafast -vf format=gray,"boxblur=6:4:cr=2:ar=2" -c:v libx264 -an overredacted_%s' % (video,video)
+command = 'ffmpeg -threads 0 -i %s -crf 20 -preset ultrafast -vf "boxblur=6:4:cr=2:ar=2",format=yuv422p  -an overredacted_%s' % (video,video)
 os.system(command)
+b2 = Bucket(s3conn, settings["outgoing_bucket"])
+k = b2.new_key(video)
+k.set_contents_from_filename('overredacted_'+video)
 youtube = settings['youtube']
-command = 'python upload.py  --file="overredacted_%s" --title="%s" --description="%s" --keywords="%s" --category="22" --privacyStatus="%s"' % (video, youtube['title'], youtube['description'], youtube['keywords'], youtube['privacy_status'])
+command = 'python upload.py  --file="overredacted_%s" --title="%s" --description="%s" --keywords="%s" --category="22" --privacyStatus="%s"' % (video, video[:-4], youtube['description'], youtube['keywords'], youtube['privacy_status'])
 os.system(command)
 command = 'mkdir thumbs; ffmpeg -i overredacted_%s -vf fps=1/30 thumbs/img\%%04d.jpg' % (video)
 os.system(command)
