@@ -1,4 +1,7 @@
 #import boto
+import json
+with open('settings.json') as settings_file:    
+    settings = json.load(settings_file)
 from boto.s3.connection import S3Connection
 s3conn = S3Connection(settings['aws_access_key_id'], settings["aws_secret_access_key"])
 mybucket = s3conn.get_bucket(settings["incoming_bucket"])
@@ -20,7 +23,8 @@ command = 'python upload.py  --file="overredacted_%s" --title="test upload" --de
 os.system(command)
 command = 'mkdir thumbs; ffmpeg -i overredacted_%s -vf fps=1/30 thumbs/img\%%04d.jpg' % (video)
 os.system(command)
-
+command = 'python upload.py  --file="overredacted_%s" --title="test upload" --description="test" --keywords="test" --category="22" --privacyStatus="private"' % video
+os.system(command)
 import boto
 import boto.s3
 
