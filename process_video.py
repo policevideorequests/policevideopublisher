@@ -19,11 +19,10 @@ k.get_contents_to_filename(video)
 
 command = 'ffmpeg -threads 0 -i %s -crf 20 -r 15 -preset ultrafast -vf format=gray,"boxblur=6:4:cr=2:ar=2" -c:v libx264 -an overredacted_%s' % (video,video)
 os.system(command)
-command = 'python upload.py  --file="overredacted_%s" --title="test upload" --description="test" --keywords="test" --category="22" --privacyStatus="private"' % video
+youtube = settings['youtube']
+command = 'python upload.py  --file="overredacted_%s" --title="%s" --description="%s" --keywords="%s" --category="22" --privacyStatus="%s"' % (video, youtube['title'], youtube['description'], youtube['keywords'], youtube['privacy_status'])
 os.system(command)
 command = 'mkdir thumbs; ffmpeg -i overredacted_%s -vf fps=1/30 thumbs/img\%%04d.jpg' % (video)
-os.system(command)
-command = 'python upload.py  --file="overredacted_%s" --title="test upload" --description="test" --keywords="test" --category="22" --privacyStatus="private"' % video
 os.system(command)
 import boto
 import boto.s3
