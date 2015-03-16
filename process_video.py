@@ -23,16 +23,19 @@ if '_cleared' in video:
     os.system(command)
     
 else:
-
-    command = 'ffmpeg -threads 0 -i %s -crf 20 -preset ultrafast -vf "boxblur=6:4:cr=2:ar=2",format=yuv422p  -an overredacted_%s' % (video,video)
+    if settings["color"]:
+        color = ''
+    else:
+        color = 'format=gray,'
+    command = 'ffmpeg -threads 0 -i "%s" -crf 20 -preset ultrafast -vf %s"boxblur=%s:%s",format=yuv422p  -an "overredacted_%s"' % (video,color,settings["blurn"], settings["blurn"], video)
     os.system(command)
-    b2 = Bucket(s3conn, settings["outgoing_bucket"])
-    k = b2.new_key(video)
-    k.set_contents_from_filename('overredacted_'+video)
+    #b2 = Bucket(s3conn, settings["outgoing_bucket"])
+    #k = b2.new_key(video)
+    #k.set_contents_from_filename('overredacted_'+video)
     
     command = 'python upload.py  --file="overredacted_%s" --title="%s" --description="%s" --keywords="%s" --category="22" --privacyStatus="%s"' % (video, video[:-4], youtube['description'], youtube['keywords'], youtube['privacy_status'])
     os.system(command)
-    command = 'mkdir thumbs; ffmpeg -i overredacted_%s -vf fps=1/30 thumbs/img\%%04d.jpg' % (video)
+    command = 'mkdir thumbs; ffmpeg -i "overredacted_%s" -vf fps=1/30 thumbs/img\%%04d.jpg' % (video)
     os.system(command)
     import boto
     import boto.s3
@@ -104,7 +107,13 @@ else:
 
 
 os.system('rm -rf thumbs; rm *.mp4; rm *.mpg')
+print 'test if delete raw video'
 if settings['delete_raw_video_from_s3']:
+    print 'deleting raw video'
+    b = Bucket(s3conn, settings["incoming_bucket"]) 
+
+    k = Key(b) 
+    k.key = video
     b.delete_key(k)
 if halt:
     os.system('sudo halt')

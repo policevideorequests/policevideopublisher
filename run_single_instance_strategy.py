@@ -21,6 +21,10 @@ if not os.path.isfile('videos_already_processed.txt'):
     
 import time
 while True:
+import json
+    # Allows one to change the settings without restarting the script
+    with open('settings.json') as settings_file:    
+        settings = json.load(settings_file)
     for key in incoming_bucket.list():
         f = open('videos_already_processed.txt', 'r')
         files = f.read().split('\n')
@@ -28,5 +32,5 @@ while True:
         if not key.name in files: 
             with open("videos_already_processed.txt", "a") as myfile:
                 myfile.write(key.name+'\n')
-            os.system('python process_video.py %s False' % (key.name))
+            os.system('python process_video.py "%s" False' % (key.name))
     time.sleep(60)
