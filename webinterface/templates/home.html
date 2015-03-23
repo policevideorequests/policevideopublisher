@@ -1,9 +1,264 @@
 <html>
 <head>
-<title>PoliceVideoPublisher</title>
+<title>{{ system_name }}</title>
+<script src="//code.jquery.com/jquery-1.11.2.min.js"></script>
+<script src="//code.jquery.com/jquery-migrate-1.2.1.min.js"></script>
+<!--
+<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/dropzone/4.0.1/basic.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dropzone/4.0.1/dropzone-amd-module.js"></script>
+<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/dropzone/4.0.1/dropzone.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dropzone/4.0.1/dropzone.js"></script>
+<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/dropzone/4.0.1/min/basic.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dropzone/4.0.1/min/dropzone-amd-module.min.js"></script>-->
+<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/dropzone/4.0.1/min/dropzone.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dropzone/4.0.1/min/dropzone.min.js"></script>
+<style>
+/* http://meyerweb.com/eric/tools/css/reset/ 
+   v2.0 | 20110126
+   License: none (public domain)
+*/
 
+html, body, div, span, applet, object, iframe,
+h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+a, abbr, acronym, address, big, cite, code,
+del, dfn, em, img, ins, kbd, q, s, samp,
+small, strike, strong, sub, sup, tt, var,
+b, u, i, center,
+dl, dt, dd, ol, ul, li,
+fieldset, form, label, legend,
+table, caption, tbody, tfoot, thead, tr, th, td,
+article, aside, canvas, details, embed, 
+figure, figcaption, footer, header, hgroup, 
+menu, nav, output, ruby, section, summary,
+time, mark, audio, video {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	font-size: 100%;
+	font: inherit;
+	vertical-align: baseline;
+}
+/* HTML5 display-role reset for older browsers */
+article, aside, details, figcaption, figure, 
+footer, header, hgroup, menu, nav, section {
+	display: block;
+}
+body {
+	line-height: 1;
+}
+ol, ul {
+	list-style: none;
+}
+blockquote, q {
+	quotes: none;
+}
+blockquote:before, blockquote:after,
+q:before, q:after {
+	content: '';
+	content: none;
+}
+table {
+	border-collapse: collapse;
+	border-spacing: 0;
+}
+
+
+body {
+font:.8em Arial;
+}
+#main, #login {
+padding:10px;
+}
+h1 {
+font-size:2em;
+background:navy;
+color:#FFF;
+padding:10px;
+}
+h2 {
+font-size:1.5em;
+}
+h3 {
+font-size:1.25em;
+}
+h1, h2, h3, h4, h5 {
+font-weight:bold;
+}
+.preview {
+width:267px;
+float:left;
+text-align:center;
+color:#FFF;
+background:#000;
+}
+.preview img {
+height:150px;
+}
+h3 {
+clear:both;
+}
+h2,h3,h4,h5,h6,p {
+margin-bottom:10px;
+}
+strong {
+font-weight:bold;
+}
+#test_ffmpeg_options {
+overflow: hidden;
+}
+#main, #login {
+display:none;
+}
+
+.container {
+float:left;
+overflow:hidden;
+width:534px;
+}
+.unsafe {
+background:red;
+color:#FFF;
+}
+.fully_redacted {
+background:#000;
+color:#000;
+}
+</style>
+<script>
+function updateFFMPEGPreviews() {
+	if ($("#is_color_selector").attr('checked') == 'checked') {
+		var color = true;
+	} else {
+		var color = false;
+	}
+	blurn = $("#blurn_selector option:selected").val();
+	for (i=0;i<4;i++) {
+		console.log('test');
+		var n = i + 1;
+		console.log('#test_ffmpeg_options div:nth-child('+n+')');
+		$('#test_ffmpeg_options div:nth-child('+n+') div:nth-child(2) img').attr('src', '/test_frames/overredacted_color_'+color+'_blurn_'+blurn+'_test_0'+(i+1)+'.mp4_img0001.jpg');
+	};
+}
+String.prototype.repeat = function(times) {
+   return (new Array(times + 1)).join(this);
+};
+$(function() {
+    $.get('/is_logged_in/', function(data) {
+        console.log(data);
+        if (data == 'True') {
+            console.log('Show settings');
+            $('#main').show();
+            $.get('/current_settings/', function(data) {
+                $('#current_blurn').text(data.blurn);
+                $('#is_color').text(data.color);
+                if (data.color) {
+                    $('#is_color_selector').attr('checked', 'checked');
+                }
+                
+                $('#blurn_selector option[value='+data.blurn+']').attr('selected','selected');
+                
+                $.get('/test_ffmpeg_options/?color='+data.color+'&blurn='+data.blurn, function(data) {
+                    var i = 0;
+                    $.each( data, function( i,url ) {
+                        i += 1;
+                        $('#current_ffmpeg_options').append('<div class="preview"><img src="/test_frames/overredacted_color_true_blurn_0_test_0'+i+'.mp4_img0001.jpg" />Original</div>');
+                        $('#current_ffmpeg_options').append('<div class="preview"><img src="'+url+'" />Overredacted</div>');
+                        $('#test_ffmpeg_options').append('<div class="container"><div class="preview"><img src="/test_frames/overredacted_color_true_blurn_0_test_0'+i+'.mp4_img0001.jpg" />Original</div><div class="preview"><img src="'+url+'" />Overredacted</div></div>');
+                        
+                    });
+                });
+            });
+            $('#is_color_selector').on('change', function (e) {
+                
+                updateFFMPEGPreviews();
+            });
+            $('#blurn_selector').on('change', function (e) {
+                
+                updateFFMPEGPreviews();
+            
+            });
+            $('#save').click(function() {
+                var newSettings = {'color': $('#is_color_selector').is(':checked'), 'blurn': parseInt($("#blurn_selector option:selected").val())}
+                $.post('/change_settings/', {'new_settings': JSON.stringify(newSettings)});
+            });
+        } else {
+            $('#login').show();
+        }        
+    });
+    $('#loginButton').click(function() {
+        $.post('/login/', {'username': $('#username').val(), 'password': $('#password').val()}, function(data) {
+            if (data == 'valid') {
+                $('#login').hide();
+                $('#main').show();
+                updateFFMPEGPreviews();
+            } else {
+            
+            }
+        });
+    });
+    Dropzone.options.myAwesomeDropzone = {
+      init: function() {
+        this.on("success", function(file, response) { 
+            $('#report_preview').html('<div id="the_report_preview">'+response['preview']+'</div>');
+            $('#report_preview').prepend('<h3>Overredacted narrative preview</h3><p><strong>Email address:</strong> <input type="text" id="send_report_to" style="width:400px" /> <input type="button" value="Send" id="send_report" /></p><p><strong>Warning:</strong> Don\'t unmark names/numbers because that would increase risk of under redacting other reports. <input type="button" value="Toggle redaction" id="toggle_redaction_marker" /></p>');
+            $('html, body').animate({
+                scrollTop: $("#report_preview").offset().top
+            }, 100);
+        });
+      }
+    };
+    $('body').on('click', '.unsafe', function(e) {
+        $(this).removeClass('unsafe');
+        $.post('/mark_word_as_safe/', {'word': $(this).text()}, function(data) {
+        
+        });
+    });
+    $('body').on('click', '#toggle_redaction_marker', function(e) {
+        $('.unsafe').toggleClass('fully_redacted');
+    });
+    $('body').on('click', '#send_report', function(e) {
+        $('.unsafe').each(function(i, obj) {
+            $(this).html('&nbsp;'.repeat($(this).text().length));
+            $(this).attr('style', 'background:#000');
+        });
+        $.post('/email_report/', {'to': $('#send_report_to').val(), 'body': '<style>.unsafe {background:#000}</style>'+$('#the_report_preview').html()});
+    });
+});
+</script>
 </head>
 <body>
-<h1>PoliceVideoPublisher</h1>
+<h1>{{ system_name }}</h1>
+<div id="main">
+<h2>Overredact reports</h2>
+<div id="report_preview"></div>
+<form action="/overredact_reports/"
+      class="dropzone"
+      id="my-awesome-dropzone" method="post" enctype="multipart/form-data"></form>
+<h2>Settings</h2>
+<!--
+<h3>Current settings</h3>
+<p><strong>Is color?:</strong> <span id="is_color"></span> <strong>Level of blur:</strong> <span id="current_blurn"></span></p>
+<div id="current_ffmpeg_options">
+
+</div>
+-->
+<h3>Video Overredaction</h3>
+<p><strong>Is color?:</strong> <input type="checkbox" id="is_color_selector" /> <strong>Blur level:</strong> <select id="blurn_selector">
+<option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option>
+<option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option>
+<option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option>
+<option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option>
+</select> <input type="button" id="save" value="Save" /></p>
+
+<div id="test_ffmpeg_options">
+
+</div>
+</div>
+<div id="login">
+<h2>Login</h2>
+<strong>Username:</strong> <input type="text" id="username" /><br/>
+<strong>Password:</strong> <input type="password" id="password" /><br/>
+<input type="button" id="loginButton" value="Login" />
+</div>
 </body>
 </html>

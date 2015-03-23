@@ -21,7 +21,7 @@ if not os.path.isfile('videos_already_processed.txt'):
     
 import time
 while True:
-import json
+    import json
     # Allows one to change the settings without restarting the script
     with open('settings.json') as settings_file:    
         settings = json.load(settings_file)
