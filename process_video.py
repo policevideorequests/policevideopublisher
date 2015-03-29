@@ -32,8 +32,13 @@ else:
     #b2 = Bucket(s3conn, settings["outgoing_bucket"])
     #k = b2.new_key(video)
     #k.set_contents_from_filename('overredacted_'+video)
-    
-    command = 'python upload.py  --file="overredacted_%s" --title="%s" --description="%s" --keywords="%s" --category="22" --privacyStatus="%s"' % (video, video[:-4], youtube['description'], youtube['keywords'], youtube['privacy_status'])
+    import re
+    if re.search('^AXON \w+ Video \d+\-\d+\-\d+ \d+.mp4$', video):
+        title = video[:-4]
+    else:
+        import time
+        title = 'SPD BodyWornVideo %s' % (time.strftime("%H:%M:%S"))
+    command = 'python upload.py  --file="overredacted_%s" --title="%s" --description="%s" --keywords="%s" --category="22" --privacyStatus="%s"' % (video, title, youtube['description'], youtube['keywords'], youtube['privacy_status'])
     os.system(command)
     command = 'mkdir thumbs; ffmpeg -i "overredacted_%s" -vf fps=1/30 thumbs/img\%%04d.jpg' % (video)
     os.system(command)

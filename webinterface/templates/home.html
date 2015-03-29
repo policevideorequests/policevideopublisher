@@ -199,6 +199,8 @@ $(function() {
     Dropzone.options.myAwesomeDropzone = {
       init: function() {
         this.on("success", function(file, response) { 
+            window.processing_id = response['processing_id'];
+            window.report_filename = response['report_filename'];
             $('#report_preview').html('<div id="the_report_preview">'+response['preview']+'</div>');
             $('#report_preview').prepend('<h3>Overredacted narrative preview</h3><p><strong>Email address:</strong> <input type="text" id="send_report_to" style="width:400px" /> <input type="button" value="Send" id="send_report" /></p><p><strong>Warning:</strong> Don\'t unmark names/numbers because that would increase risk of under redacting other reports. <input type="button" value="Toggle redaction" id="toggle_redaction_marker" /></p>');
             $('html, body').animate({
@@ -207,11 +209,33 @@ $(function() {
         });
       }
     };
+    $('body').on('click', '.safe', function(e) {
+        $(this).removeClass('safe');
+        $(this).addClass('unsafe');
+        if (confirm('Do you want to add '+$(this).text()+' to the unsafe list?')) {
+            $.post('/mark_word_as_unsafe/', {'modify': 'true', 'report_filename': window.report_filename, 'word': $(this).text()}, function(data) {
+            
+            });
+        } else {
+            $.post('/mark_word_as_unsafe/', {'modify': 'false', 'report_filename': window.report_filename, 'word': $(this).text()}, function(data) {
+            
+            });
+        }
+        
+    });
     $('body').on('click', '.unsafe', function(e) {
         $(this).removeClass('unsafe');
-        $.post('/mark_word_as_safe/', {'word': $(this).text()}, function(data) {
+        $(this).addClass('safe');
+        if (confirm('Do you want to add '+$(this).text()+' to the safe list?')) {
+            $.post('/mark_word_as_safe/', {'modify': 'true', 'report_filename': window.report_filename, 'word': $(this).text()}, function(data) {
+            
+            });
+        } else {
+            $.post('/mark_word_as_safe/', {'modify': 'false', 'report_filename': window.report_filename, 'word': $(this).text()}, function(data) {
+            
+            });
+        }
         
-        });
     });
     $('body').on('click', '#toggle_redaction_marker', function(e) {
         $('.unsafe').toggleClass('fully_redacted');
@@ -221,7 +245,7 @@ $(function() {
             $(this).html('&nbsp;'.repeat($(this).text().length));
             $(this).attr('style', 'background:#000');
         });
-        $.post('/email_report/', {'to': $('#send_report_to').val(), 'body': '<style>.unsafe {background:#000}</style>'+$('#the_report_preview').html()});
+        $.post('/email_report/', {'processing_id': window.processing_id, 'to': $('#send_report_to').val(), 'body': '<style>.unsafe {background:#000}</style>'+$('#the_report_preview').html()});
     });
 });
 </script>

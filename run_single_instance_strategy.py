@@ -26,11 +26,23 @@ while True:
     with open('settings.json') as settings_file:    
         settings = json.load(settings_file)
     for key in incoming_bucket.list():
-        f = open('videos_already_processed.txt', 'r')
-        files = f.read().split('\n')
-        f.close()
-        if not key.name in files: 
-            with open("videos_already_processed.txt", "a") as myfile:
-                myfile.write(key.name+'\n')
-            os.system('python process_video.py "%s" False' % (key.name))
+        if key.name.endswith('.zip'):
+            f = open('videos_already_processed.txt', 'r')
+            files = f.read().split('\n')
+            f.close()
+            if not key.name in files: 
+                with open("videos_already_processed.txt", "a") as myfile:
+                    myfile.write(key.name+'\n')
+                print 'zip'
+                print key.name
+                os.system('sudo unzip -j -o "/mnt/s3/%s" -d /mnt/s3/' % (key.name))
+                os.system('sudo rm /mnt/s3/%s' % (key.name))
+        elif key.name.endswith('.mp4'):
+            f = open('videos_already_processed.txt', 'r')
+            files = f.read().split('\n')
+            f.close()
+            if not key.name in files: 
+                with open("videos_already_processed.txt", "a") as myfile:
+                    myfile.write(key.name+'\n')
+                os.system('python process_video.py "%s" False' % (key.name))
     time.sleep(60)

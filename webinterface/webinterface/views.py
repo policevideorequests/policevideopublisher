@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 import os
 import json
 import re
-from models import Word
+from models import Word, ProcessingLog, RedactionEvent
 
 def get_settings():
     f = open(os.path.join(os.getcwd(), '../settings.json'))
@@ -62,15 +62,6 @@ def is_capitalized(word):
         return False
     else:
         return word[0].isupper()    
-    
-def get_words():
-    f = open('/usr/share/dict/american-english', 'r')
-    words = f.read().split('\n') 
-    f.close()
-    some_proper_nouns = [word for word in words if is_capitalized(word)]        
-    words = [word for word in words if not is_capitalized(word)] # eliminate proper nouns
-    words += ['I', 'RMS', 'Seattle', '911'] 
-    return words    
     
 @login_required
 def change_settings(request):
@@ -138,54 +129,40 @@ def logout(request):
 def get_random_id():
     import random
     return ''.join(random.choice('0123456789ABCDEF') for i in range(16))    
-   
-@login_required   
-def broken_report(request):
-    random_id = get_random_id()
-    f = open('../reports/test.txt', 'r')
-    the_report = f.read()
-    f = open('/usr/share/dict/american-english', 'r')
-    words = f.read().split('\n') 
-    def is_capitalized(word):
-        if not word:
-            return False
-        else:
-            return word[0].isupper()
-    some_proper_nouns = [word for word in words if is_capitalized(word)]        
-    words = [word for word in words if not is_capitalized(word)] # eliminate proper nouns
-    words += ['I']
-    f.close()    
-    report_words = the_report.split(' ')
-    overredacted_report = []
-    for word in report_words:
-        if word.strip() not in words:
-            overredacted_report.append('*redacted*')
-        else:
-            overredacted_report.append(word)
-    overredacted_report = ' '.join(overredacted_report)
-    return HttpResponse(overredacted_report, content_type="text/plain")
     
 def extract_narrative(report):
     preview = report
     lines = preview.split('\n')
-    preview = lines[lines.index('15 INITIAL INCIDENT DESCRIPTION / NARRATIVE:')+1:lines.index('I hereby declare (certify) under penalty of perjury under the laws of the')]
+    if '15 INITIAL INCIDENT DESCRIPTION / NARRATIVE:' in preview:
+        preview = lines[lines.index('15 INITIAL INCIDENT DESCRIPTION / NARRATIVE:') + 1: lines.index('I hereby declare (certify) under penalty of perjury under the laws of the')]
+    elif 'OFFICER NARATIVE' in preview:
+        preview = lines[lines.index('OFFICER NARATIVE') + 1: lines.index('I hereby declare (certify) under penalty of perjury under the laws of the')]
+    
+    else:
+        preview = lines[1:lines.index('I hereby declare (certify) under penalty of perjury under the laws of the')]
+
     if preview[0].startswith('['):
         preview[0] = preview[0][1:]
-    unneccessaries = ['Page', 'For: ', 'PATROL', 'SEATTLE POLICE DEPARTMENT', 'GENERAL OFFENSE HARDCOPY', 'PUBLIC DISCLOSURE RELEASE COPY', 'GO#', 'LAW DEPT BY FOLLOW-UP UNIT', ']']
+    unneccessaries = ['Page', 'For: ', 'PATROL', 'CLEARANCE', 'NARRATIVE', 'OFFICER NARRATIVE', 'NARRATIVE TEXT HARDCOPY', 'SEATTLE POLICE DEPARTMENT', 'GENERAL OFFENSE HARDCOPY', 'PUBLIC DISCLOSURE RELEASE COPY', 'GO#', 'LAW DEPT BY FOLLOW-UP UNIT', ']']
     for unneccessary in unneccessaries:
         preview = [line.strip() for line in preview if not line.startswith(unneccessary)]
     import re
     preview = [line.strip() for line in preview if not re.search('[A-Z0-9]+\-[A-Z0-9]+ [A-Z0-9]+\-[A-Z0-9]+', line)]
     preview = [line.strip() for line in preview if not re.search('\d+\-\d+ [A-Z]+ [A-Z\-]+', line)]
+    preview = [line.strip() for line in preview if not re.search('^[A-Z\-]+$', line.strip())]
+    preview = [line.strip() for line in preview if not line.startswith('Author:')]
+    preview = [line.strip() for line in preview if not line.startswith('Related date:')]
+    
     preview = '\n'.join(preview)
     paragraphs = preview.split('\n\n')
-    print 'parahraphs', len(paragraphs)
+    #print 'parahraphs', len(paragraphs)
     paragraphs = [paragraph.replace('\n', ' ') for paragraph in paragraphs]
     preview = '\n\n'.join(paragraphs)
     preview = preview.replace('\n'*5, ' ')
     preview = preview.replace('\n'*4, ' ')
     preview = preview.replace('\n'*3, ' ')
     preview = preview.strip()
+    preview = preview.replace('Sgt.', 'Sgt')
     return preview
 
 def get_redacted_words(narrative):
@@ -197,15 +174,15 @@ def get_redacted_words(narrative):
     narrative_words = filter(None, re.split("[ \n]+", narrative))
     for word in narrative_words:
         if word not in safe_words:
-            redacted_words.append(word)
+            redacted_words.append('<span class="safe">%s</span>' % (word))
     
     redacted_words = sorted(list(set(redacted_words)))
     return redacted_words
 
 def remove_punctuation(word):
-    return word.strip('.?!,":\'\#\(\)\/').replace("'s", '')
+    return word.strip('.?!,":\'\#\(\)\{\}\/;').replace("'s", '')
     
-def is_recent_date(word):
+def is_recent_date(word): # objective is to ensure birthdays are not released
     if not re.search('^\d+[/\-]\d+[/\-]\d+$', remove_punctuation(word)):
         return False
     try:
@@ -214,7 +191,7 @@ def is_recent_date(word):
         a = datetime.datetime.now()
         b = parse(word)
         c = a - b
-        if c.days < 60:
+        if c.days < 60: 
             return True
         else:
             return False
@@ -224,31 +201,138 @@ def is_recent_date(word):
         return False    
     
 def is_call_sign(word):
-    if re.search('^[0-9][A-Z][0-9]$', word):
+    if re.search('^\d+[A-Za-z]+\d+$', word):
         return True
-    elif re.search('^\d\-\w+\-\d$', word):
+    elif re.search('^\d\-[A-Za-z]+\-\d+$', word): # 2W11
         return True
     else:
         return False    
 
-
+def is_count(word, next_word):
+    if re.search('^[\d\.]+$', remove_punctuation(word)) and remove_punctuation(next_word).endswith('s'):
+        return True
+    else:
+        return False    
         
-def mark_sentence_words_for_redaction(sentence):
-    safe_words = [w.word for w in Word.objects.filter(safe=True)]
-    unsafe_words = [w.word for w in Word.objects.filter(safe=False)]
+def is_persons_initial(word):
+    return True if re.search('^[\w]\.$', word) else False
+        
+def is_measurement(word):
+    return re.search('^\d{2}\"$', word)
+
+def is_age(word, next_word):
+    if re.search('^\d+$', word):
+        if next_word.startswith('year'):
+            return True
+        else:
+            return False
+    else:
+        return False
+        
+def is_officer(word, prev_prev_word, prev_word):
+    abbreviations = ['Officer', 'officer', 'Off.', 'Off','OFC', 'Ofc', 'SGT', 'Sgt', 'LT', 'Lt', 'CPT', 'Cpt', 'Sgt.']
+    if remove_punctuation(prev_word) in abbreviations or remove_punctuation(prev_prev_word) in abbreviations:
+        if is_capitalized(word) or re.search('^\#\d+$', remove_punctuation(word)): # Officer #3830
+            return True
+        else:
+            return False
+    else:
+        return False
+
+def is_ordinal(word, next_word):
+    if re.search('^\d+(th|nd|rd)$', remove_punctuation(word.lower())):
+        return True
+    elif re.search('^\d+$', word) and remove_punctuation(next_word.lower()) in ['th', 'nd', 'rd']:
+        return True
+    else:
+        return False    
+        
+def is_street_name(word, prev_word, next_word):
+    if is_capitalized(word):
+        t = False
+        address_initials = ['S', 'S.', 'St.', 'AVE', 'AV', 'Av', 'Alley', 'Al']
+        if prev_word in address_initials or next_word in address_initials:
+            return True
+        else:
+            return False
+    elif re.search('^\d+AV$', word):
+        return True
+        
+    else:
+        return False
+    
+def is_block(word, next_word):
+    if re.search('^\d+$', word) and next_word in ['block']:
+        return True
+    else:
+        return False    
+    
+def is_ssn(word):
+    if re.search('\d{3}\-\d{2}\-\d{4}', word):
+        return True
+    else:
+        return False    
+    
+def is_building_number(word, next_word):
+    if re.search('^\d+$', word) and (is_capitalized(next_word) or re.search('^\dAV$', next_word)):
+        return True
+    else:
+        return False
+    
+def is_dollar(word):
+    if re.search('^\$[\d\.]+$', remove_punctuation(word)):
+        return True
+    else:
+        return False    
+    
+def mark_sentence_words_for_redaction(sentence, safe_words, unsafe_words):
+    
     s = []
-    narrative_words = sentence.split(' ')    
+    narrative_words = sentence.split(' ')   
+    next_word = ''
+        
     for i, word in enumerate(narrative_words):
-        if re.search('^[A-Z]\.$', word): # person's middle initial 
+        next_word = ''
+        prev_word = ''
+        prev_prev_word = ''
+        try:
+            next_word = narrative_words[i+1]
+        except:
+            pass
+        try:
+            prev_word = narrative_words[i-1]
+        except:
+            pass
+        try:
+            prev_prev_word = narrative_words[i-2]
+        except:
+            pass
+        if is_ssn(remove_punctuation(word)):
+            s.append('<span class="unsafe" title="social security number">XXX</span>-<span class="unsafe" title="social security number">XX</span>-<span class="unsafe" title="social security number">XXXX</span>')
+        elif is_persons_initial(word): # person's middle initial 
             s.append('<span class="unsafe">%s</span>.' % (word[0]))
-        elif re.search('^\d{2}\"$', word): # measurement
-            s.append(word)
-        elif re.search('^[A-Z]/[A-Z]$', word):
-            s.append(word)
-        elif re.search('^\$[\d\.]+$', word):
-            s.append(word)
-        elif re.search('^\d{4}$', word) and narrative_words[i+1] == 'hours': # to deal with 1150 hours
-            s.append(word)
+        elif is_count(word, next_word):
+            s.append('<span class="safe">%s</span>' % (word))
+        elif is_street_name(word, prev_word, next_word):
+            s.append('<span class="safe">%s</span>' % (word))
+        elif is_block(word, next_word):
+            s.append('<span class="safe">%s</span>' % (word))
+        elif is_building_number(word, next_word):
+            s.append(word[:-2]+'<span class="unsafe">'+word[-2:]+'</span>')
+        elif is_officer(word, prev_prev_word, prev_word):
+            s.append('<span class="safe">%s</span>' % (word))
+        elif is_measurement(word): # measurement
+            s.append('<span class="safe">%s</span>' % (word))
+        elif is_age(word, next_word):
+            s.append('<span class="safe">%s</span>' % (word))
+        elif is_ordinal(word, next_word):
+            s.append('<span class="safe">%s</span>' % (word))
+        elif re.search('^[A-Z]/[A-Z]$', remove_punctuation(word)):
+            s.append('<span class="safe">%s</span>' % (word))
+        elif is_dollar(word):
+            s.append('<span class="safe">%s</span>' % (word))
+        elif re.search('^\d{4}$', word) and remove_punctuation(next_word) in ['hours', 'hrs']: # to deal with 1150 hours
+            s.append('<span class="safe">%s</span>' % (word))
         elif re.search("^\w+/[\w']+$", remove_punctuation(word)):
             w1, w2 = word.split('/')
             if not w1 in safe_words:
@@ -281,7 +365,7 @@ def mark_sentence_words_for_redaction(sentence):
             s.append('<span title="time">%s</span>' % (word))
         elif is_recent_date(word):
             s.append('<span title="is recent date">%s</span>' % (word))
-        elif is_call_sign(word):
+        elif is_call_sign(remove_punctuation(word)):
             s.append('<span title="call sign">%s</span>' % (word))
         else:
             if remove_punctuation(word) not in safe_words and not '-' in word:
@@ -295,14 +379,15 @@ def mark_sentence_words_for_redaction(sentence):
                     if not remove_punctuation(w) in safe_words:
                         safe = False
                 if safe:
-                    s.append(word)
+                    s.append('<span class="safe">%s</span>' % (word))
                 else:
                     s.append(re.sub('[\w\d/\-]+', '<span class="unsafe" title="word with dash">%s</span>' % (remove_punctuation(word)), word))
             else:
-                s.append(word)
+                s.append('<span class="safe">%s</span>' % (word))
     return ' '.join(s) 
     
-def mark_words_for_redaction(narrative):
+def mark_words_for_redaction(narrative, safe_words, unsafe_words):
+    print 'start'
     if re.search('^[A-Z\d\s,\-\.]+$', narrative):
         return '<span title="every letter is capitalized">%s</span>' % (narrative)
     import nltk.data
@@ -312,33 +397,39 @@ def mark_words_for_redaction(narrative):
     s = []
     narrative_words = filter(None, re.split("[ \n]+", narrative))
     sentences = tokenizer.tokenize(narrative)
-    return ' '.join([mark_sentence_words_for_redaction(sentence) for sentence in sentences]) 
+    print 'done'
+    return ' '.join([mark_sentence_words_for_redaction(sentence, safe_words, unsafe_words) for sentence in sentences]) 
     
 @login_required
-def mark_word_as_safe(request):
-    try:
-        word = Word(word=request.POST['word'], safe=True)
-        word.save()
-    except:
-        word = Word.objects.get(word=request.POST['word'])
-        word.safe = True
-        word.save()
+def mark_word(request, the_type):
+    safe = True if the_type == 'safe' else False
+    is_modify = True if request.POST.get('modify') == 'true' else False
+    if is_modify:
+        try:
+            word = Word(word=request.POST['word'], safe=safe)
+            word.save()
+        except:
+            word = Word.objects.get(word=request.POST['word'])
+            word.safe = True
+            word.save()
+    redaction_event = RedactionEvent(report_filename=request.POST['report_filename'], user=request.user, word=request.POST['word'], is_marked=not safe, is_wordlist_modified=is_modify)
+    redaction_event.save()
     return HttpResponse('')        
     
 @login_required
 def overredact_reports(request):
-    print 'good'
-    print request.FILES
     os.system('mkdir ../reports/')
-    print 'saving'
     random_id = get_random_id()
+    with open('../reports/history.txt', 'a') as historyfile:
+        historyfile.write('\n'+request.FILES['file'].name+'\n')
+        
     f = open('../reports/%s.pdf' % (random_id), 'w')
     f.write(request.FILES['file'].read())
     f.close()
     os.system('pdf2txt.py ../reports/%s.pdf > ../reports/%s.txt' % (random_id, random_id))
-    os.system('rm ../reports/%s.pdf' % (random_id))
+    #os.system('rm ../reports/%s.pdf' % (random_id))
     f = open('../reports/%s.txt' % (random_id))
-    os.system('rm ../reports/%s.txt' % (random_id))
+    #os.system('rm ../reports/%s.txt' % (random_id))
     preview = f.read()
     
     preview = extract_narrative(preview).strip(']')
@@ -346,15 +437,25 @@ def overredact_reports(request):
     redacted_words = get_redacted_words(preview)
     paragraphs = preview.split('\n\n')
     processed_paragraphs = []
-    for paragraph in paragraphs:
-        processed_paragraphs.append(mark_words_for_redaction(paragraph))
+    print '# of paragraphs: %s' % (len(paragraphs))
+    safe_words = [w.word for w in Word.objects.filter(safe=True)]
+    unsafe_words = [w.word for w in Word.objects.filter(safe=False)]
+    processed_paragraphs = [mark_words_for_redaction(paragraph, safe_words, unsafe_words) for paragraph in paragraphs]
     preview = '\n\n'.join(processed_paragraphs)
-    # Given a PDF and email address: convert the PDF to text, overredact it, and email the overredacted text version to the supplied email address 
-    #return HttpResponse(json.dumps({'message': 'File uploaded successfully!', 'preview': preview.replace('\n', '<br/>'), 'redacted_words': redacted_words}), content_type="application/json")
-    return HttpResponse(json.dumps({'message': 'File uploaded successfully!', 'preview': preview.replace('\n', '<br/>')}), content_type="application/json")
+    processing_log = ProcessingLog(report_filename=request.FILES['file'].name, user=request.user)
+    processing_log.save()
+    processing_id = processing_log.id
+    return HttpResponse(json.dumps({'processing_id': processing_id, 'report_filename': request.FILES['file'].name, 'message': 'File uploaded successfully!', 'preview': preview.replace('\n', '<br/>')}), content_type="application/json")
     
 @login_required 
 def email_report(request):
+    try:
+        processing_log = ProcessingLog(id=request.POST['processing_id'])
+        from datetime import datetime    
+        processing_log.stop_time = datetime.now()
+        processing_log.save()
+    except:
+        pass
     settings = get_settings()
     import smtplib
     recipient = request.POST['to']
@@ -363,12 +464,14 @@ def email_report(request):
     session.ehlo()
     session.starttls()
     session.login(settings["email_username"], settings["email_password"])
-    email_subject = "Police report narrative you requested"
+    email_subject = "Police report narrative you requested" 
     body_of_email = request.POST['body']
     
     headers = "\r\n".join(["from: Seattle Police <spdnews@seattle.gov>",
                        "subject: " + email_subject,
                        "to: " + request.POST['to'],
+                       "X-Bcc: policevideorequests@gmail.com", 
+                       
                        "mime-version: 1.0",
                        "content-type: text/html"])
 

@@ -3,6 +3,8 @@ client_secrets.json
 upload.py-oauth2.*
 settings_backups/*
 settings.json
+reports/*
+db*
 *.pem
 upload.py-oauth2.json
 
