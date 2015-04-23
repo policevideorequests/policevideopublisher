@@ -36,8 +36,8 @@ while True:
                 print 'zip'
                 print key.name
                 os.system('sudo unzip -j -o "/mnt/s3/%s" -d /mnt/s3/' % (key.name))
-                os.system('sudo rm /mnt/s3/%s' % (key.name))
-        elif key.name.endswith('.mp4'):
+                os.system('sudo rm "/mnt/s3/%s"' % (key.name))
+        elif key.name.endswith('.mp4') or key.name.lower().endswith('.mpg') or key.name.lower().endswith('.mov'):
             f = open('videos_already_processed.txt', 'r')
             files = f.read().split('\n')
             f.close()

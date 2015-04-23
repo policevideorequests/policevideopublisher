@@ -44,6 +44,10 @@ def test_artibury_ffmpeg_options(request):
     return HttpResponse(json.dumps(overredacted_frames), content_type="application/json")
 
 @login_required
+def detected_regions(request):
+    return HttpResponse(json.dumps(sorted(os.listdir('media/detected_regions/frames/'))), content_type="application/json")
+    
+@login_required
 def test_ffmpeg_options(request):
     import os
     print os.getcwd()
@@ -180,7 +184,7 @@ def get_redacted_words(narrative):
     return redacted_words
 
 def remove_punctuation(word):
-    return word.strip('.?!,":\'\#\(\)\{\}\/;').replace("'s", '')
+    return word.strip('.?!,":\'\#\(\)\{\}\/;*').replace("'s", '')
     
 def is_recent_date(word): # objective is to ensure birthdays are not released
     if not re.search('^\d+[/\-]\d+[/\-]\d+$', remove_punctuation(word)):
@@ -447,6 +451,30 @@ def overredact_reports(request):
     processing_id = processing_log.id
     return HttpResponse(json.dumps({'processing_id': processing_id, 'report_filename': request.FILES['file'].name, 'message': 'File uploaded successfully!', 'preview': preview.replace('\n', '<br/>')}), content_type="application/json")
     
+@login_required
+def minimally_redact_video(request):
+    os.system('rm -rf ../video_for_minimal_redaction/; mkdir ../video_for_minimal_redaction/')
+    os.system('aws s3 rm s3://spdvideodetectedregions/ --recursive')
+    os.system('aws s3 rm s3://spdvideoframesin/ --recursive')
+    random_id = get_random_id()
+    os.system('mkdir ../video_for_minimal_redaction/%s/' % (random_id))
+    # save the video
+    f = open('../video_for_minimal_redaction/%s.mp4' % (random_id), 'w')
+    f.write(request.FILES['file'].read())
+    f.close()
+    # convert the video to frames
+    os.system('ffmpeg -threads 0 -i ../video_for_minimal_redaction/%s.mp4 -f image2 ../video_for_minimal_redaction/%s/%%05d.png' % (random_id, random_id))
+    # save to S3
+    os.system('aws s3 cp ../video_for_minimal_redaction/%s/ s3://spdvideoframesin/%s/ --recursive' % (random_id, random_id))
+    # give lambda 20 seconds to process all the frames and then copy the detections to local filesystem
+    import time
+    time.sleep(20)
+    os.system('rm media/detected_regions/frames/*')
+    os.system('cd media/detected_regions/frames/; aws s3 cp s3://spdvideodetectedregions/%s/ . --recursive' % (random_id))
+    os.system('aws s3 rm s3://spdvideodetectedregions/ --recursive')
+    os.system('aws s3 rm s3://spdvideoframesin/ --recursive')
+    return HttpResponse(str(random_id))    
+    
 @login_required 
 def email_report(request):
     try:
@@ -480,3 +508,209 @@ def email_report(request):
     session.sendmail("timacbackup", request.POST['to'], content)
     session.quit()
     return HttpResponse('done')
+
+# USAGE
+# python compare.py
+
+# import the necessary packages
+from skimage.measure import structural_similarity as ssim
+import matplotlib.pyplot as plt
+import numpy as np
+import cv2
+
+def mse(imageA, imageB):
+	# the 'Mean Squared Error' between the two images is the
+	# sum of the squared difference between the two images;
+	# NOTE: the two images must have the same dimension
+	err = np.sum((imageA.astype("float") - imageB.astype("float")) ** 2)
+	err /= float(imageA.shape[0] * imageA.shape[1])
+	
+	# return the MSE, the lower the error, the more "similar"
+	# the two images are
+	return err
+    
+#!/usr/bin/env python
+"""Compare two aligned images of the same size.
+
+Usage: python compare.py first-image second-image
+"""
+ 
+import sys
+ 
+from scipy.misc import imread
+from scipy.linalg import norm
+from scipy import sum, average
+ 
+def main():
+    file1, file2 = sys.argv[1:1+2]
+    # read images as 2D arrays (convert to grayscale for simplicity)
+    img1 = to_grayscale(imread(file1).astype(float))
+    img2 = to_grayscale(imread(file2).astype(float))
+    # compare
+    n_m, n_0 = compare_images(img1, img2)
+    print "Manhattan norm:", n_m, "/ per pixel:", n_m/img1.size
+    print "Zero norm:", n_0, "/ per pixel:", n_0*1.0/img1.size
+ 
+def compare_images(img1, img2):
+    # normalize to compensate for exposure difference
+    img1 = normalize(img1)
+    img2 = normalize(img2)
+    # calculate the difference and its norms
+    diff = img1 - img2  # elementwise for scipy arrays
+    m_norm = sum(abs(diff))  # Manhattan norm
+    z_norm = norm(diff.ravel(), 0)  # Zero norm
+    return (m_norm, z_norm)
+ 
+def to_grayscale(arr):
+    "If arr is a color image (3D array), convert it to grayscale (2D array)."
+    if len(arr.shape) == 3:
+        return average(arr, -1)  # average over the last axis (color channels)
+    else:
+        return arr
+ 
+def normalize(arr):
+    rng = arr.max()-arr.min()
+    amin = arr.min()
+    return (arr-amin)*255/rng
+
+def compare(imageA, imageB):
+    # load the images -- the original, the original + contrast,
+    # and the original + photoshop
+    #imageA = cv2.imread(imageA)
+    #imageB = cv2.imread(imageB)
+    #imageA = cv2.cvtColor(imageA, cv2.COLOR_BGR2GRAY)
+    #imageA =  cv2.fastNlMeansDenoising(imageA,10,10,7,21)
+    imageA = cv2.Canny(imageA,100,200)
+    #imageB =  cv2.fastNlMeansDenoisingColored(imageB,None,10,10,7,21)
+    
+    # convert the images to grayscale
+    #imageA = cv2.cvtColor(imageA, cv2.COLOR_BGR2GRAY)
+    #imageB = cv2.cvtColor(imageB, cv2.COLOR_BGR2GRAY)
+    
+    
+    
+    #imageA = cv2.GaussianBlur(imageA,(3, 3), 30)
+    #imageB = cv2.GaussianBlur(imageA,(3, 3), 30)
+    
+    # Make the two images the same size
+    def get_lowest(A, B):
+        if A < B:
+            return A
+        return B
+    heightA, widthA = imageA.shape[:2]
+    #print heightA, widthA
+    heightB, widthB = imageB.shape[:2]
+    #print heightB, widthB
+    height = get_lowest(heightA, heightB)
+    width = get_lowest(widthA, widthB)
+    #print height, width
+    imageA = imageA[0:height, 0: width]
+    imageB = imageB[0:height, 0: width]
+    #print "MSE", mse(imageA, imageB)
+    return ssim(imageA, imageB)
+    
+import numpy
+from PIL import Image
+import cv2
+
+def similarness(image1,image2):
+    """
+Return the correlation distance be1tween the histograms. This is 'normalized' so that
+1 is a perfect match while -1 is a complete mismatch and 0 is no match.
+"""
+    # Open and resize images to 200x200
+    i1 = Image.open(image1).resize((200,200))
+    i2 = Image.open(image2).resize((200,200))
+
+    # Get histogram and seperate into RGB channels
+    i1hist = numpy.array(i1.histogram()).astype('float32')
+    i1r, i1b, i1g = i1hist[0:256], i1hist[256:256*2], i1hist[256*2:]
+    # Re bin the histogram from 256 bins to 48 for each channel
+    i1rh = numpy.array([sum(i1r[i*16:16*(i+1)]) for i in range(16)]).astype('float32')
+    i1bh = numpy.array([sum(i1b[i*16:16*(i+1)]) for i in range(16)]).astype('float32')
+    i1gh = numpy.array([sum(i1g[i*16:16*(i+1)]) for i in range(16)]).astype('float32')
+    # Combine all the channels back into one array
+    i1histbin = numpy.ravel([i1rh, i1bh, i1gh]).astype('float32')
+
+    # Same steps for the second image
+    i2hist = numpy.array(i2.histogram()).astype('float32')
+    i2r, i2b, i2g = i2hist[0:256], i2hist[256:256*2], i2hist[256*2:]
+    i2rh = numpy.array([sum(i2r[i*16:16*(i+1)]) for i in range(16)]).astype('float32')
+    i2bh = numpy.array([sum(i2b[i*16:16*(i+1)]) for i in range(16)]).astype('float32')
+    i2gh = numpy.array([sum(i2g[i*16:16*(i+1)]) for i in range(16)]).astype('float32')
+    i2histbin = numpy.ravel([i2rh, i2bh, i2gh]).astype('float32')
+
+    return cv2.compareHist(i1histbin, i2histbin, 0)    
+   
+@login_required
+def compare_all_detected_to(request, compare_to):
+    import os
+    def c(A):
+        return compare(A, "media/detected_regions/frames/"+compare_to)
+    detections = os.listdir("media/detected_regions/frames/")
+    print len(detections)
+    comparisons = []
+    #compare_to = cv2.imread("media/detected_regions/frames/" + compare_to)
+    #compare_to = cv2.cvtColor(compare_to, cv2.COLOR_BGR2GRAY)
+    #compare_to = cv2.fastNlMeansDenoising(compare_to,10,10,7,21)
+    #compare_to = cv2.Canny(compare_to,100,200)
+    for i, imageA in enumerate(detections):
+        print i
+        #if i == 1000:
+        #    break
+        score = similarness("media/detected_regions/frames/" + imageA, "media/detected_regions/frames/" + compare_to)
+        if score > .85:
+            comparisons.append((imageA, score))    
+        #comparisons.append((imageA, compare(cv2.imread("media/detected_regions/frames/" + imageA), compare_to)))
+    return HttpResponse(json.dumps(sorted(comparisons, reverse=True, key=lambda x: x[1])), content_type="application/json")
+    #return HttpResponse(json.dumps(sorted([(imageA, c("media/detected_regions/frames/" + imageA))  for imageA in detections if c("media/detected_regions/frames/" + imageA) > 0.15], reverse=True, key=lambda x: x[1])), content_type="application/json")
+     
+@login_required
+def apply_video_redactions(request):
+    import cv2
+    
+    videoid = request.POST['videoid']
+    print request.POST
+    filenames = json.loads(request.POST['filenames'])
+    filenames = sorted(list(set(filenames)))
+    frames = [{'frame': filename[:5], 'filenames': [f for f in filenames if f.startswith(filename[:5])]} for filename in filenames]
+    for frame in frames:
+        iteml = []
+        #filename = '%05d.png' % (i)
+        current = os.getcwd()
+        # Get user supplied values
+        pieces = filename.replace('.png', '').split('_')
+        #print filename
+        basename = frame['frame']
+        imagePath = os.path.join(current, '../video_for_minimal_redaction/%s/%s' % (videoid, basename+'.png'))
+        print imagePath
+        # Read the image
+        image = cv2.imread(imagePath)
+        result_image = image.copy()
+        for filename in frame['filenames']:
+            pieces = filename.replace('.png', '').split('_')
+            # Draw a rectangle around the faces
+            print filename, map(int, pieces[2:])
+            x, y, w, h = map(int, pieces[2:])
+            #iteml.append((x, y, w, h))
+            #cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            sub_face = image[y:y+h, x:x+w]
+            # apply a gaussian blur on this new recangle image
+            sub_face = cv2.GaussianBlur(sub_face,(23, 23), 30)
+            # merge this blurry rectangle to our final image
+            result_image[y:y+sub_face.shape[0], x:x+sub_face.shape[1]] = sub_face
+
+        cv2.imwrite(os.path.join(current, '../video_for_minimal_redaction/%s/%s' % (videoid, basename+'.png')), result_image)
+    #cmd = 'ffmpeg -threads 0 -framerate 30/1 -i ../video_for_minimal_redaction/%s/%%05d.png -c:v libx264 -r 30 -pix_fmt yuv420p out.mp4' % (videoid)
+    os.system('rm media/out.mp4')
+    cmd = 'ffmpeg -threads 0 -framerate 30/1 -i ../video_for_minimal_redaction/%s/%%05d.png -r 30 -pix_fmt yuv420p media/out.mp4' % (videoid)
+    print cmd
+    os.system(cmd)
+    return HttpResponse('')
+    
+@login_required
+def get_frames(request):
+    import os
+    
+    frames = os.listdir('media/frames/')
+    return HttpResponse(json.dumps(sorted(frames)), content_type="application/json")

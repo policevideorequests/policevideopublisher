@@ -27,3 +27,10 @@ class ProcessingLog(models.Model):
     
     def __unicode__(self):
         return "%s, %s, %s, %s" % (self.report_filename, self.user.username, self.start_time, self.stop_time)
+        
+class RedactedNarrative(models.Model):
+    case_number = models.CharField(max_length=15)
+    narrative = models.TextField()
+    
+    def __unicode__(self): 
+        return self.case_number

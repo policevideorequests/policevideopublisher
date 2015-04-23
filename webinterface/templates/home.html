@@ -97,7 +97,7 @@ height:150px;
 h3 {
 clear:both;
 }
-h2,h3,h4,h5,h6,p {
+h2,h3,h4,h5,h6,p,.dropzone {
 margin-bottom:10px;
 }
 strong {
@@ -123,8 +123,37 @@ color:#FFF;
 background:#000;
 color:#000;
 }
+#grouping, #detected_regions {
+height:500px;
+overflow:scroll;
+}
+
+.selected {
+border:1px solid orange;
+}
+
+#finding_detections {
+background:orange;
+top:0;
+left:0;
+right:0;
+padding:5px;
+text-align:center;
+position:fixed;
+display:none;
+}
+
 </style>
 <script>
+function guid() {
+  function s4() {
+    return Math.floor((1 + Math.random()) * 0x10000)
+      .toString(16)
+      .substring(1);
+  }
+  return s4() + s4() + '-' + s4() + '-' + s4() + '-' +
+    s4() + '-' + s4() + s4() + s4();
+}
 function updateFFMPEGPreviews() {
 	if ($("#is_color_selector").attr('checked') == 'checked') {
 		var color = true;
@@ -136,19 +165,11 @@ function updateFFMPEGPreviews() {
 		console.log('test');
 		var n = i + 1;
 		console.log('#test_ffmpeg_options div:nth-child('+n+')');
-		$('#test_ffmpeg_options div:nth-child('+n+') div:nth-child(2) img').attr('src', '/test_frames/overredacted_color_'+color+'_blurn_'+blurn+'_test_0'+(i+1)+'.mp4_img0001.jpg');
+		$('#test_ffmpeg_options div:nth-child('+n+') div:nth-child(2) img').attr('src', '/test_frames/overredacted_color_'+color+'_blurn_'+blurn+'_test_0'+(i+1)+'.mp4_img0001.jpg?id='+guid());
 	};
 }
-String.prototype.repeat = function(times) {
-   return (new Array(times + 1)).join(this);
-};
-$(function() {
-    $.get('/is_logged_in/', function(data) {
-        console.log(data);
-        if (data == 'True') {
-            console.log('Show settings');
-            $('#main').show();
-            $.get('/current_settings/', function(data) {
+function initialSetup() {
+$.get('/current_settings/', function(data) {
                 $('#current_blurn').text(data.blurn);
                 $('#is_color').text(data.color);
                 if (data.color) {
@@ -168,6 +189,25 @@ $(function() {
                     });
                 });
             });
+    updateFFMPEGPreviews();
+}
+String.prototype.repeat = function(times) {
+   return (new Array(times + 1)).join(this);
+}; 
+function nextDetectedRegion() {
+    if (window.detected_regions_i != (window.detected_regions.length - 1)) {
+        
+        $('#detected_regions').append('<img filename="'+window.detected_regions[window.detected_regions_i]+'" class="detected_region '+window.detected_regions[window.detected_regions_i].slice(0,-4)+'" src="/media/detected_regions/frames/'+window.detected_regions[window.detected_regions_i]+'" onload="nextDetectedRegion();" />');
+        window.detected_regions_i += 1;
+    }
+}
+$(function() {
+    $.get('/is_logged_in/', function(data) {
+        console.log(data);
+        if (data == 'True') {
+            console.log('Show settings');
+            $('#main').show();
+            initialSetup();
             $('#is_color_selector').on('change', function (e) {
                 
                 updateFFMPEGPreviews();
@@ -190,7 +230,7 @@ $(function() {
             if (data == 'valid') {
                 $('#login').hide();
                 $('#main').show();
-                updateFFMPEGPreviews();
+                initialSetup();
             } else {
             
             }
@@ -247,12 +287,94 @@ $(function() {
         });
         $.post('/email_report/', {'processing_id': window.processing_id, 'to': $('#send_report_to').val(), 'body': '<style>.unsafe {background:#000}</style>'+$('#the_report_preview').html()});
     });
+    
+    $('body').on('click', '#detected_regions .detected_region', function(e) {
+        $('#finding_detections').show();
+        //alert('clicked');    
+        $(this).addClass('selected');
+        //$(this).css({'border': '1px solid orange'}); 
+        $('#grouping').append('<div id="'+$(this).attr('filename').slice(0,-4)+'">'+$(this)[0].outerHTML+'</div><div id="'+$(this).attr('filename').slice(0,-4)+'_similar">Similar </div>');
+        var filename = $(this).attr('filename');
+        $.get('/compare_all_detected_to/'+$(this).attr('filename')+'/', function(data) {
+            $('#finding_detections').hide();
+            for (var i=0;i<data.length;i++) {
+                $('#'+filename.slice(0,-4)+'_similar').append('<img class="detected_region" filename="'+data[i][0].slice(0,-4)+'" src="/media/detected_regions/frames/'+data[i][0]+'" />');
+                $('.'+data[i][0].slice(0,-4)).addClass('selected');
+            }
+        });
+    });
+    $('body').on('click', '#grouping .detected_region', function(e) {
+        $(this).remove();
+    });
+    $('body').on('click', '#remove_left_overs', function(e) {
+        $('#detected_regions .detected_region').not('.selected').remove();
+    });
+    $('body').on('click', '#apply_redactions', function(e) {
+        var filenames = [];
+        $('#grouping img').each(function() {
+            filenames.push($( this ).attr('filename'));
+        });
+        console.log(JSON.stringify(filenames));
+        $.post('/apply_video_redactions/', {'videoid': window.videoid, 'filenames': JSON.stringify(filenames)}, function(data) {
+            $('#video_area').html('<video width="320" height="240" controls><source src="/media/out.mp4" type="video/mp4"></video>');
+        });
+    });
+    $('body').on('click', '#blur_all', function(e) {
+        var filenames = [];
+        $('#detected_regions img').each(function() {
+            filenames.push($( this ).attr('filename'));
+        });
+        console.log(JSON.stringify(filenames));
+        $.post('/apply_video_redactions/', {'videoid': window.videoid, 'filenames': JSON.stringify(filenames)}, function(data) {
+            $('#video_area').html('<video width="320" height="240" controls><source src="/media/out.mp4" type="video/mp4"></video>');
+        });
+    });
+    Dropzone.options.minimallyRedactDropzone = {
+      maxFilesize: 400000,
+      init: function() {
+        
+        this.on("success", function(file, response) { 
+            window.videoid = response;
+            $.get('/detected_regions/', function(data) {
+                $('#grouping').html('');
+                $('#detected_regions').html('');
+                window.detected_regions = data;
+                window.detected_regions_i = 0;
+                nextDetectedRegion();
+                //$('#detected_regions').append('<img src="/media/detected_regions/frames/'+data[i]+'" onload="nextDetectedRegion();" />');
+                //for (var i=0;i<data.length;i++) {
+                //    $('#detected_regions').append('<img src="/media/detected_regions/frames/'+data[i]+'" />')
+                //}
+            });
+        });
+      }
+    };
+    $('#show_frame_by_frame').click(function() {
+        $.get('/get_frames/', function(data) {
+            for (var i=0;i<data.length;i++) {
+                $('#frame_by_frame').append('<img src="/media/frames/'+data[i]+'" />');
+            }
+        });
+    });
 });
 </script>
 </head>
 <body>
+<div id="finding_detections">Searching for similar detections</div>
 <h1>{{ system_name }}</h1>
+
 <div id="main">
+<h2>Minimally redact video</h2>
+<form action="/minimally_redact_video/"
+      class="dropzone"
+      id="minimally-redact-dropzone" method="post" enctype="multipart/form-data"></form>
+<div id="video_area"></div>
+<input type="button" value="Apply redactions" id="apply_redactions" /><input type="button" value="Blur all detections" id="blur_all" />
+<input type="button" value="Show frame by frame" id="show_frame_by_frame" />
+<div id="frame_by_frame"></div>
+<div id="grouping" style="border-bottom:1px solid #000">Grouping</div>
+<input type="button" value="Remove left overs" id="remove_left_overs" />
+<div id="detected_regions"></div>
 <h2>Overredact reports</h2>
 <div id="report_preview"></div>
 <form action="/overredact_reports/"

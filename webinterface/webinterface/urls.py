@@ -20,5 +20,11 @@ urlpatterns = patterns('',
     url(r'^mark_word_as_(?P<the_type>\w+)/$', 'webinterface.views.mark_word'),
     url(r'^email_report/$', 'webinterface.views.email_report'),
     url(r'^overredact_reports/$', 'webinterface.views.overredact_reports'),
-) 
+    url(r'^minimally_redact_video/$', 'webinterface.views.minimally_redact_video'),
+    url(r'^apply_video_redactions/$', 'webinterface.views.apply_video_redactions'),
+    url(r'^detected_regions/$', 'webinterface.views.detected_regions'),
+    url(r'^get_frames/$', 'webinterface.views.get_frames'),
+    url(r'^compare_all_detected_to/(?P<compare_to>[\w\d_\.]+)/$', 'webinterface.views.compare_all_detected_to'), 
+    
+) + static('media/', document_root=os.path.join(os.getcwd(), 'media/'))
 # + static('test_frames/', document_root=os.path.join(os.getcwd(), 'test_videos/frames/'))

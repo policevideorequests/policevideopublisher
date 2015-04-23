@@ -27,10 +27,12 @@ else:
         color = ''
     else:
         color = 'format=gray,'
-    command = 'ffmpeg -threads 0 -i "%s" -crf 20 -preset ultrafast -vf %s"boxblur=%s:%s",format=yuv422p  -an "overredacted_%s"' % (video,color,settings["blurn"], settings["blurn"], video)
+    #command = 'ffmpeg -threads 0 -i "%s" -crf 20 -preset ultrafast -vf %s"boxblur=%s:%s",format=yuv422p  -an "overredacted_%s"' % (video,color,settings["blurn"], settings["blurn"], video)
+    command = 'ffmpeg -threads 0 -i "%s"  -vf "edgedetect=low=0.25:high=0.5",format=yuv422p  -an "overredacted_%s"' % (video, video)
+    #ffmpeg -i "takentoground.mp4" -strict -2  -vf "edgedetect=low=0.25:high=0.5",format=yuv422p takentoground_low_25_high_50.mp4
     os.system(command)
     #b2 = Bucket(s3conn, settings["outgoing_bucket"])
-    #k = b2.new_key(video)
+    #k = b2.new_key(video) 
     #k.set_contents_from_filename('overredacted_'+video)
     import re
     if re.search('^AXON \w+ Video \d+\-\d+\-\d+ \d+.mp4$', video):
