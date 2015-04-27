@@ -61,7 +61,7 @@ def process_video(key_name):
         print traceback.print_exc(file=sys.stdout)
     
 threads = []
-while True:
+while False: # disabled this because accidentally fired up 20 EC2s opps...
     for key in incoming_bucket.list():
         f = open('videos_already_processed.txt', 'r')
         files = f.read().split('\n')

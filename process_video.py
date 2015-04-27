@@ -19,28 +19,98 @@ k.get_contents_to_filename(video)
 youtube = settings['youtube']
 # Videos with "cleared" in the filename get automatically uploaded to Youtube as is
 if '_cleared' in video:
-    command = 'python upload.py  --file="%s" --title="%s" --description="%s" --keywords="%s" --category="22" --privacyStatus="%s"' % (video, video[:-4].replace('_cleared', ''), youtube['cleared_description'], youtube['keywords'], youtube['privacy_status'])
+    command = 'python upload.py  --file="%s" --title="Clear w/ sound: %s" --description="%s" --keywords="%s" --category="22" --privacyStatus="%s"' % (video, video[:-4].replace('_cleared', ''), youtube['cleared_description'], youtube['keywords'], youtube['privacy_status'])
     os.system(command)
     
 else:
     if settings["color"]:
         color = ''
     else:
-        color = 'format=gray,'
+        color = 'format=gray,' 
     #command = 'ffmpeg -threads 0 -i "%s" -crf 20 -preset ultrafast -vf %s"boxblur=%s:%s",format=yuv422p  -an "overredacted_%s"' % (video,color,settings["blurn"], settings["blurn"], video)
-    command = 'ffmpeg -threads 0 -i "%s"  -vf "edgedetect=low=0.25:high=0.5",format=yuv422p  -an "overredacted_%s"' % (video, video)
+    command = 'ffmpeg -threads 0 -i "%s" -preset ultrafast -vf "edgedetect=low=0.25:high=0.5",scale=320:240,format=yuv422p  -an "overredacted_%s"' % (video, video[:-4]+'.mp4')
     #ffmpeg -i "takentoground.mp4" -strict -2  -vf "edgedetect=low=0.25:high=0.5",format=yuv422p takentoground_low_25_high_50.mp4
     os.system(command)
+    os.system('rm *.wav; rm *.mp3')
+    if not video.endswith('.mp4'):
+        os.system('ffmpeg -threads 0 -i "%s" -strict -2 "%s"' % (video, video[:-4]+'.mp4'))
+    #os.system('ffmpeg -threads 0 -i "%s" audio.mp3' % (video[:-4]+'.mp4'))
+    #os.system('ffmpeg -threads 0 -i audio.mp3 audio.wav')
+    os.system('ffmpeg -threads 0 -i "%s" audio.wav' % (video[:-4]+'.mp4'))
+    # This code below was written by Chris Koss as a way to keep environmental sounds in audio while ensuring that information exempt from 
+    # records act is not released
+    #import matplotlib.pyplot as plt
+    import numpy as np
+    from scipy import fft, arange, ifft, io
+    import wave
+    import sys
+
+
+    spf = wave.open('audio.wav','r')
+
+    #Extract Raw Audio from Wav File
+    signal = spf.readframes(-1)
+    signal = np.fromstring(signal, 'Int16')
+
+    INCR_SIZE = 88200
+
+    start = 0
+    end = len(signal)
+
+    #start = 2646000 + INCR_SIZE * 10
+    #end = start + INCR_SIZE * 10
+    #signal = signal[start:end]
+
+    from scipy.io.wavfile import read,write
+    #write('out/speech.wav', 88200, signal)      
+
+    i = 0
+
+    #out = np.ndarray()
+
+    while i < end - start:
+        print i
+
+        targ = signal[i:i + INCR_SIZE - 1]
+        
+        #plt.figure()
+        #plt.plot(targ)
+        #plt.savefig('out/' + str(i) + 'sig.png')
+        Y=fft(targ)
+        #print 'plot1'
+
+        #plt.figure()
+        #plt.plot(Y[83000:])
+        #plt.savefig('out/' + str(i) + 'fft.png')
+        
+        Y[:5000] = 0
+        Y[83300:87800] = 0
+        #Y[86000:88000] = 0    
+
+        Y[30000:70000] = 0
+        
+        #plt.figure()
+        #plt.plot(Y[83000:])
+        #plt.savefig('out/' + str(i) + 'fft2.png')
+
+        signal[i:i + INCR_SIZE - 1] = ifft(Y)
+        
+        i += INCR_SIZE
+
+
+    print 'writing file'    
+    write('out.wav', 88200, signal)
+    os.system('ffmpeg -threads 0 -i "overredacted_%s" -i out.wav -strict -2 "with_sound_overredacted_%s"' % (video[:-4]+'.mp4', video[:-4]+'.mp4'))
     #b2 = Bucket(s3conn, settings["outgoing_bucket"])
     #k = b2.new_key(video) 
     #k.set_contents_from_filename('overredacted_'+video)
     import re
-    if re.search('^AXON \w+ Video \d+\-\d+\-\d+ \d+.mp4$', video):
-        title = video[:-4]
+    if re.search('AXON \w+ Video \d+\-\d+\-\d+ \d+', video) or re.search('\d+\@\d+', video):
+        title = 'Over-redacted preview of '+video[:-4]
     else:
         import time
-        title = 'SPD BodyWornVideo %s' % (time.strftime("%H:%M:%S"))
-    command = 'python upload.py  --file="overredacted_%s" --title="%s" --description="%s" --keywords="%s" --category="22" --privacyStatus="%s"' % (video, title, youtube['description'], youtube['keywords'], youtube['privacy_status'])
+        title = 'Over-redacted preview of a SPD BodyWornVideo processed on %s' % (time.strftime("%b %d %H:%M:%S"))
+    command = 'python upload.py  --file="with_sound_overredacted_%s" --title="%s" --description="%s" --keywords="%s" --category="22" --privacyStatus="%s"' % (video[:-4]+'.mp4', title, youtube['description'], youtube['keywords'], youtube['privacy_status'])
     os.system(command)
     command = 'mkdir thumbs; ffmpeg -i "overredacted_%s" -vf fps=1/30 thumbs/img\%%04d.jpg' % (video)
     os.system(command)
