@@ -36,14 +36,21 @@ else:
         os.system('ffmpeg -threads 0 -i "%s" -strict -2 "%s"' % (video, video[:-4]+'.mp4'))
     #os.system('ffmpeg -threads 0 -i "%s" audio.mp3' % (video[:-4]+'.mp4'))
     #os.system('ffmpeg -threads 0 -i audio.mp3 audio.wav')
-    os.system('ffmpeg -threads 0 -i "%s" audio.wav' % (video[:-4]+'.mp4'))
+    os.system('ffmpeg -threads 0 -i "%s" -ac 1 audio.wav' % (video[:-4]+'.mp4'))
     # This code below was written by Chris Koss as a way to keep environmental sounds in audio while ensuring that information exempt from 
     # records act is not released
-    #import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt
     import numpy as np
     from scipy import fft, arange, ifft, io
     import wave
     import sys
+    from scipy.io.wavfile import read,write
+
+
+
+    #  using this to generate wav from mp4
+    #
+    #   ./ffmpeg -i axon.mp4 -ac 1 tricky.wav
 
 
     spf = wave.open('audio.wav','r')
@@ -52,21 +59,46 @@ else:
     signal = spf.readframes(-1)
     signal = np.fromstring(signal, 'Int16')
 
-    INCR_SIZE = 88200
+    print spf.getparams()
+
+    samplerate = spf.getparams()[2]
+
+    INCR_SIZE = samplerate * spf.getparams()[0]
+
+    if samplerate > 10000:
+        # Old values
+        bottom_bound_bottom = 0.005 * INCR_SIZE
+        bottom_bound_top = 0.1 * INCR_SIZE
+
+        mid_bound_bottom = 0.34 * INCR_SIZE
+        mid_bound_top = 0.79 * INCR_SIZE
+
+        top_bound_bottom = 0.9 * INCR_SIZE
+        top_bound_top = 0.995 * INCR_SIZE
+    else :
+        bottom_bound_bottom = 0.03 * INCR_SIZE
+        bottom_bound_top = 0.2 * INCR_SIZE
+
+        mid_bound_bottom = 0.3 * INCR_SIZE
+        mid_bound_top = 0.7 * INCR_SIZE
+
+        top_bound_bottom = 0.8 * INCR_SIZE
+        top_bound_top = 0.97 * INCR_SIZE
+
 
     start = 0
-    end = len(signal)
+    end =  len(signal)
+
+    #Using smaller chunk from the sample for ease of use
 
     #start = 2646000 + INCR_SIZE * 10
     #end = start + INCR_SIZE * 10
     #signal = signal[start:end]
 
-    from scipy.io.wavfile import read,write
-    #write('out/speech.wav', 88200, signal)      
-
     i = 0
 
-    #out = np.ndarray()
+    #print 'writing prefile'
+    #write('pre.wav', INCR_SIZE, signal)
 
     while i < end - start:
         print i
@@ -80,17 +112,20 @@ else:
         #print 'plot1'
 
         #plt.figure()
-        #plt.plot(Y[83000:])
+        #plt.plot(Y)
         #plt.savefig('out/' + str(i) + 'fft.png')
         
-        Y[:5000] = 0
-        Y[83300:87800] = 0
+        Y[:bottom_bound_top] = 0
+        Y[mid_bound_bottom:mid_bound_top] = 0
+
+        Y[top_bound_bottom:top_bound_top] = 0
+        
         #Y[86000:88000] = 0    
 
-        Y[30000:70000] = 0
+
         
         #plt.figure()
-        #plt.plot(Y[83000:])
+        #plt.plot(Y)
         #plt.savefig('out/' + str(i) + 'fft2.png')
 
         signal[i:i + INCR_SIZE - 1] = ifft(Y)
@@ -99,8 +134,9 @@ else:
 
 
     print 'writing file'    
-    write('out.wav', 88200, signal)
-    os.system('ffmpeg -threads 0 -i "overredacted_%s" -i out.wav -strict -2 "with_sound_overredacted_%s"' % (video[:-4]+'.mp4', video[:-4]+'.mp4'))
+    write('out.wav', INCR_SIZE, signal)
+    os.system('ffmpeg -threads 0 -i "overredacted_%s" -i out.wav -strict -2 -b:a 32k "with_sound2_overredacted_%s"' % (video[:-4]+'.mp4', video[:-4]+'.mp4'))
+    #os.system('ffmpeg -threads 0 -i "overredacted_%s" -i out.wav -strict -2 "with_sound2_overredacted_%s"' % (video[:-4]+'.mp4', video[:-4]+'.mp4'))
     #b2 = Bucket(s3conn, settings["outgoing_bucket"])
     #k = b2.new_key(video) 
     #k.set_contents_from_filename('overredacted_'+video)
@@ -110,7 +146,7 @@ else:
     else:
         import time
         title = 'Over-redacted preview of a SPD BodyWornVideo processed on %s' % (time.strftime("%b %d %H:%M:%S"))
-    command = 'python upload.py  --file="with_sound_overredacted_%s" --title="%s" --description="%s" --keywords="%s" --category="22" --privacyStatus="%s"' % (video[:-4]+'.mp4', title, youtube['description'], youtube['keywords'], youtube['privacy_status'])
+    command = 'python upload.py  --file="with_sound2_overredacted_%s" --title="%s" --description="%s" --keywords="%s" --category="22" --privacyStatus="%s"' % (video[:-4]+'.mp4', title, youtube['description'], youtube['keywords'], youtube['privacy_status'])
     os.system(command)
     command = 'mkdir thumbs; ffmpeg -i "overredacted_%s" -vf fps=1/30 thumbs/img\%%04d.jpg' % (video)
     os.system(command)
